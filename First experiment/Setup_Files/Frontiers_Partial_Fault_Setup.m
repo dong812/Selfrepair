@@ -1,0 +1,229 @@
+
+function [Par, AstPar, AstVar, SynPar, SynVar, NeuPar, NeuVar, Flag, Silence, Input]=Frontiers_Partial_Fault_Setup(CaMode)
+%Sets up the parameters for the Self_Repair Model 
+%The Parameter Units are as follows:
+%Time = seconds (s)
+%Molecule Concentration = micro moles (uM)
+%Voltage = millivolts (mV)
+%Current = picooamps (pA)
+%Resistance = Gigaohms (GO)
+%Conductance = milliseimens (mS)
+%Capacitance = picoFarads (pF)
+
+if nargin < 1
+    CaMode = 1; %default setting for Calcium oscillation mode is AM (1)
+end
+
+if CaMode > 3
+    error('ERROR!!! CaMode must between 1 and 3(Am = 1, FM = 2, AM-FM = 3)')
+end
+%% Parameters
+Par.ExpName = 'No_Fault';
+strng = strcat('Results\',Par.ExpName);
+mkdir(strng)
+Par.T = 400;                %Length of Simulation in Seconds
+Par.Ts = 1*10^-3;         %Time step for Euler method Calculations (ms)
+Par.T = Par.T/Par.Ts;     % Provides T relative to the size of time step e.g T = 65 Ts = 0.001 (T=65000)
+Par.t=[Par.Ts:Par.Ts:((Par.T)*Par.Ts)]; % Sets up a vector of time steps used for ploting results
+Par.Num_Inputs_OP = 10;   % number of inputs of Input Layer
+Par.Num_Neurons_OP = 2;   % number of neurons in Input Layer
+Par.Num_Astro_OP = 1;     % number of astrocytes in input layer
+Par.Astro_map = [1,2];    % astrocyte connection map eg [1,2;3,4] = astrocyte 1 connects to neurons 1 and 2 and astrocyte 2 connects to 3 and 4
+Par.Fault_Time = 200;       % time at which a synaptic fault occurs
+Par.Fault_Time = Par.Fault_Time/Par.Ts;
+%Sets the synapse which are to have a simulated fault i.e. in this case
+%synapses 11-18(synapse 1-8 on neuron 2)
+Par.FaultSyns = [11;18];
+
+%% Flags
+%Manual Input Flag
+Flag.ManIn = 1; %0 = off, 1 = on
+%Allows the user to choose the type of Input 0 = off, 1 = on
+Flag.InputType = 0;
+%Input type Flag
+Flag.InType = '2'; %0 = Linear Complete, 1 = Linear Quiet, 2 = Poisson Complete, 3 = Poisson Quiet
+%Flag to decide if the trains should be plotted
+Flag.InSpikePlot = 0; %0 = off, 1 = on
+%Flag for storing v for plotting
+Flag.vPlot = 1;
+%Astrocyte Flag
+Flag.Astro = 1; %0 = No Astrocyte involvement, 1 = Astrocyte involvement
+%Sets a flag to tell system if DSE is active
+Flag.Dse = 1;
+%Sets a flag to tell system if Esp is active
+Flag.Esp = 1;
+%sets a flag to simulate fault conditions as set by Par.Fault_Time and SynPar.Fault
+Flag.Fault = 1;
+%% Astrocyte Parameters
+if Flag.Astro
+AstPar.IP_star_3 = 0.16 ; %0.16 microMolar
+AstPar.r_IP3 = 0.5; %rate of IP3 production 0.5uM Sec^-1 (original Li-Rinzel = 7.2uM)0.5
+AstPar.tau_IP3 = 7; %decay rate of IP3, 7(s)
+AstPar.r_IP3ATP = 2.0644;
+AstPar.tau_IP3ATP = 0.0113;
+
+AstPar.v1 = 6; %6s^-1 = 0.006 ms^-1 (Part of Jchan)(Maximal CICR rate)
+AstPar.v2 = 0.11; %0.11 sec^-1 = 0.00011 ms^-1 (Part of Jleak)(Maximal rate of CA2 leak from ER)
+AstPar.vER = 0.9; %0.9uM sec^-1 = 0.0009 uM ms^-1 (Part of Jpump)(Maximal Rate of SERCA Update)
+%NOTE: vER is equivalant to v3 in original model.
+
+%AM
+if CaMode == 1
+AstPar.c0 = 1.9; %2uM (Part of CA2_ER)**********(Total Cell free CA2 concentration refered to the Cytosol Volume)2
+AstPar.KER = 0.1; %0.1uM (part of Jpump)(SIRCA calcium affinity) 0.051
+AstPar.d5 = 0.08234; %0.08234uM (Part of n_inf) (CA2+ activation dissociation constant)
+end
+
+%FM
+if CaMode == 2 
+AstPar.c0 = 2; %2uM (Part of CA2_ER)**********(Total Cell free CA2 concentration refered to the Cytosol Volume)
+AstPar.KER = 0.051; %0.1uM (part of Jpump)(SIRCA calcium affinity) 0.051
+AstPar.d5 = 0.08234; %0.08234uM (Part of n_inf) (CA2+ activation dissociation constant)
+end
+
+% AM-FM
+if CaMode == 3
+AstPar.c0 = 4; %2uM (Part of CA2_ER)**********(Total Cell free CA2 concentration refered to the Cytosol Volume)
+AstPar.KER = 0.051; %0.1uM (part of Jpump)(SIRCA calcium affinity) 0.051
+AstPar.d5 = 0.08234; %0.08234uM (Part of n_inf) (CA2+ activation dissociation constant)
+%NOTE: KER is equivalant to k3 in original model
+end
+
+AstPar.c1 = 0.185; %(Part of Jchan)Ratio Between cytosol volume and ER volume)
+AstPar.d1 = 0.13;%0.13uM (Part of m_inf )
+AstPar.d2 = 1.049; %1.049uM (Part of Alpha_qr)
+AstPar.d3 = 0.9434; %0.934 uM (Part of Alpha_q) 
+AstPar.a2 = 0.2; %0.2uM sec^-1 (Part of Alpha_q)
+AstPar.BaseCA2Thresh = 0.15;
+AstPar.CA2Thresh = AstPar.BaseCA2Thresh * Par.Num_Inputs_OP; %sets the calcium threshold in uM
+AstPar.localCA2Thresh = 0.2;
+
+AstPar.tau_Glu = 0.1;%glutamate time constant;
+AstPar.tau_Esp = 40;%Esp time constant 40s;
+
+
+%% Astrocyte Varaiables
+%%%Multi-CA2+ Pool
+AstVar.IP3 = AstPar.IP_star_3 * ones(Par.Num_Inputs_OP * Par.Num_Neurons_OP,1); %sets up the initial IP3 Levels
+AstVar.IP3Store = AstPar.IP_star_3 * ones(Par.Num_Inputs_OP * Par.Num_Neurons_OP, Par.T); %Creates storage space for IP3 levels
+AstVar.IP3ATPSpikes =zeros(Par.Num_Inputs_OP * Par.Num_Neurons_OP,1);
+AstVar.IP3ATPStore =zeros(Par.Num_Inputs_OP * Par.Num_Neurons_OP, Par.T);
+
+
+%NOTE:
+%Each Process (Ast-Syn connection)of the astrocyte generates its own IP3 and CA2 wave therfore CA2 wave is 
+%a summation of all calcium waves generated by the Processes.
+
+AstVar.CA2 = 0.0710 * ones(Par.Num_Inputs_OP * Par.Num_Neurons_OP,1);% sets up initial astrocyte Calcium levels
+AstVar.h = 0.7799 * ones(Par.Num_Inputs_OP * Par.Num_Neurons_OP,1);  % sets up initial h levels
+AstVar.CA2_Spike_Timer = 0.3 / Par.Ts;                               %length of time between releases of Glu when Ca2 above threshold (s)
+AstVar.CA2_Spike_Timer_Reset = AstVar.CA2_Spike_Timer;               % used to reset the calcium timer
+AstVar.localCA2_Spike_Timer = AstVar.CA2_Spike_Timer.*ones(Par.Num_Inputs_OP * Par.Num_Neurons_OP,1); 
+
+AstVar.Glu = 0;             % self repair glutamate
+AstVar.r_Glu = 10;          % self reapir glu creation rate local and global
+
+AstVar.Esp = zeros(Par.Num_Inputs_OP * Par.Num_Neurons_OP, 1);             % self repair Esp 
+AstVar.Esp_weight = 55000;  % self repair Esp weighting factor
+
+%calculates the initial total level of calcium as a result of all the 
+%synapses connected to each astrocyte 
+num_syn_Astro = (Par.Num_Inputs_OP * Par.Num_Neurons_OP)/Par.Num_Astro_OP; % number of synapse coinnected to each astrocyte
+beg_Syn = 1; %the first synapse number
+for a = 1:Par.Num_Astro_OP
+    end_Syn = beg_Syn+(num_syn_Astro-1);  % Calculates the last synapse number
+    temp = AstVar.CA2(beg_Syn:end_Syn,1); % Stores the initial levels of calcium at each synapse
+    AstVar.CA2Initial(a,1) = sum(temp,1); % Adds all the different synaptic levels of calcium to give an initial astrocyte calcium level
+end
+%Sets up a storage area for total astrocytic calcium
+AstVar.CA2TotalStore = zeros(Par.Num_Astro_OP,Par.T);
+%initialises the total calcium level based on the initial level of calcium
+AstVar.CA2TotalStore(:,1) = AstVar.CA2Initial(:,1);
+
+AstVar.CA2_Spike = zeros(Par.Num_Astro_OP, Par.T);  % used to monitor Calcium Spikes
+AstVar.localCA2_Spike = zeros(Par.Num_Inputs_OP * Par.Num_Neurons_OP, Par.T); 
+
+AstVar.CA2Store = zeros(Par.Num_Inputs_OP * Par.Num_Neurons_OP,Par.T); %used to store the evolution of CA2
+AstVar.CA2Store(:,1) = 0.071006;    %initialises calcium store
+AstVar.GluStore = zeros(Par.Num_Astro_OP,Par.T);%Stores the evolution of Glu
+
+AstVar.localGluStore = zeros(Par.Num_Inputs_OP * Par.Num_Neurons_OP,Par.T);
+
+AstVar.EspStore = zeros(Par.Num_Inputs_OP * Par.Num_Neurons_OP,Par.T);%Stores the evolution of Esp
+end % if Flag.Astro
+
+
+%% Synapse Parameters
+% if Flag.SelfRepair
+SynPar.tau_AG = 10;%2500;AG time constant
+SynPar.Baser_AG = 8; %total rate of AG creation
+SynPar.r_AG = SynPar.Baser_AG / Par.Num_Inputs_OP;%rate of AG creation (uM sec-1)per synapse
+SynPar.Kag = 4000; %Scaling factor for Ag which drives Dse
+% end
+
+
+%% Synapse Variables
+%Change Probabilities and fault Probabilities here
+SynVar.PrInit = [0.5; 0.5; 0.5; 0.5; 0.5; 0.5; 0.5; 0.5; 0.5; 0.5; 0.5; 0.5; 0.5; 0.5; 0.5; 0.5; 0.5; 0.5; 0.5; 0.5;];% Initial Synapse probabilities
+SynVar.Fault = [0.5; 0.5; 0.5; 0.5; 0.5; 0.5; 0.5; 0.5; 0.5; 0.5; 0.1; 0.1; 0.1; 0.1; 0.1; 0.1; 0.1; 0.1; 0.5; 0.5;]; % Fault Condition Probabilities
+
+SynVar.Ase = 300;
+SynVar.Itot = zeros(Par.Num_Neurons_OP,Par.T);  % Total Synaptic currents
+SynVar.AG = zeros(Par.Num_Inputs_OP * Par.Num_Neurons_OP,1);    % Storage for synaptiv AG levels
+SynVar.Dse = zeros(Par.Num_Inputs_OP * Par.Num_Neurons_OP,1);   % Storage for DSE levels
+SynVar.AGStore = zeros(Par.Num_Inputs_OP,Par.T);                % Individual synaptic AG storage for plotting
+SynVar.DseStore = zeros(Par.Num_Neurons_OP,Par.T);              % Individual synaptic DSE storage for plotting
+SynVar.PrStore = zeros(Par.Num_Inputs_OP * Par.Num_Neurons_OP, Par.T);% Storage for synaptic probabilities for plotting
+SynVar.PrStore(:,1) = SynVar.PrInit(:);                               % probStore initialisation
+SynVar.SynapseOut = zeros(Par.Num_Inputs_OP * Par.Num_Neurons_OP, Par.T); % Stores all the synaptic activations when the synapse lets a spike through bassed on the probability
+%% LIF Neuron Parameters
+NeuPar.Vth = 9;       %Threshold voltage (mV)
+NeuPar.Reset = 0;     %Reset Voltage (mV)
+NeuPar.RefPeriod = 0.002; %(2ms)
+NeuPar.R_mem = 1.2;    %(1.2 Giga Ohms) Membrane resistance
+NeuPar.C_mem = 50;     % (50 Pico Farads) Membrane Capacitance
+NeuPar.tau_mem = 0.06;   %(60ms)Neuron membrane time constant
+%% LIF Neuron Variables
+% NeuVar.vpre = 0;
+NeuVar.v = zeros(Par.Num_Neurons_OP);
+if Flag.vPlot == 1
+NeuVar.vStore = zeros(Par.Num_Neurons_OP, Par.T);
+end
+NeuVar.Refract = zeros(Par.Num_Neurons_OP,1); %Refractory state of neuron
+NeuVar.Spikes = zeros(Par.Num_Neurons_OP, Par.T);
+%% Enter the input frequencies
+%uncomment to declare frequency dynamicaly when model is working
+%frequency = zeros(Num_Samples,Num_Inputs)
+
+Input.frequency(1,1:10) = 10;
+Input.frequency(2,1:10) = 10;
+
+%% Silent Periods
+%Note: Enter silent periods in pairs i.e. from-to. Each row is a new
+%synapse. Note however each synapse must have the same number of silent
+%periods
+
+%        Silence = [1,1,;....
+%                   1,1;....
+%                   1,11;....
+%                   1,11; ....
+%                   40000,80000; ....
+%                   40000,80000;....
+%                   40000,80000;....
+%                   40000,80000;];
+%Phase Shift
+%        Silence = [1,1,;....
+%                   1,5000;....
+%                   1,10000;....
+%                   1,15000; ....
+%                   1,1,; ....
+%                   1,1;....
+%                   1,1;....
+%                   1,1;];
+       Silence = [100,200];....
+           Silence = Silence/Par.Ts;
+%  Silence = [100,200];....
+% %            Silence = Silence/Par.Ts;
+                  
+
+disp('Parameters and Variables Loaded')
